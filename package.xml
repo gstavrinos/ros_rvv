@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
     <name>ros_rvv</name>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <description>The ROS Robot View Vizualization package</description>
 
     <maintainer email="gstavrinos@iit.demokritos.gr">George Stavrinos</maintainer>
