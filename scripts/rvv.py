@@ -113,6 +113,7 @@ def init():
 
     # Range
     rframe = rospy.get_param("/ros_rvv/frame", "camera_frame")
+    fov_topic = rospy.get_param("/ros_rvv/fov_pub_topic", "/ros_rvv/fov")
     rt = rospy.get_param("/ros_rvv/radiation_type", 1) # 0 for ultrasound, 1 for IR
     fov = rospy.get_param("/ros_rvv/field_of_view", math.pi/4) # radians
     r = rospy.get_param("/ros_rvv/range", 1) # meters
@@ -122,7 +123,6 @@ def init():
     pa = rospy.get_param("/ros_rvv/publish_area", True)
     mst = rospy.get_param("/ros_rvv/map_sub_topic", "projected_map2")
     mpt = rospy.get_param("/ros_rvv/map_pub_topic", "/ros_rvv/viewed_area")
-    fov_topic = rospy.get_param("/ros_rvv/fov_pub_topic", "/ros_rvv/fov")
     max_time = rospy.get_param("/ros_rvv/max_time", 10) # in secs, <=0 to disable it
 
     fov_pub = rospy.Publisher(fov_topic, Range, queue_size=1)
