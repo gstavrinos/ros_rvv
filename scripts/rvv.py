@@ -9,23 +9,34 @@ import tf2_geometry_msgs
 from std_srvs.srv import Empty
 from sensor_msgs.msg import Range
 from nav_msgs.msg import OccupancyGrid
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import TransformStamped, PoseStamped
 
 area_pub = None
+map_sub = None
+pc2_area_pub = None
+pc2_sub = None
 fov_msg = Range()
 tf2_buffer = None
 grid_timestamps = np.array([])
+cloud_timestamps = np.array([])
 max_time = 0
 last_t = None
+lmap = None
+lcloud = None
+ml = False
+cl = True
 
 # Shortcut of tf's lookup_transform
 def lookupTF(target_frame, source_frame):
     return tf2_buffer.lookup_transform(target_frame, source_frame, rospy.Time(), rospy.Duration(1))
 
-# Service callback that clears the grid timestamps to (re-)initialize viewed area
+# Service callback that clears the timestamps to (re-)initialize viewed area
 def clearCallback(req):
-    global grid_timestamps, last_t
+    global grid_timestamps, cloud_timestamps, last_t
     grid_timestamps = np.array([])
+    cloud_timestamps = np.array([])
     last_t = None
     return []
 
@@ -33,8 +44,8 @@ def clearCallback(req):
 def invalidQuaternion(q):
     return q.x == 0 and q.y == 0 and q.z == 0 and q.w ==0
 
-# OccupancyGrid callback
-def ogCallback(og):
+# OccupancyGrid viewed area processing
+def handleOccupancyGrid(og):
     global grid_timestamps, last_t
     try:
         msg = OccupancyGrid()
@@ -105,8 +116,30 @@ def ogCallback(og):
     except Exception as e:
         rospy.logerr(e)
 
+# PointCloud2 viewed area processing
+def handlePointCloud2(cloud):
+    # TODO
+    pass
+
+# PointCloud2 callback
+def pc2Callback(cloud):
+    global lcloud
+    if cl:
+        lcloud = cloud
+        pc2_sub.unregister()
+        return
+    handlePointCloud2(cloud)
+
+# OccupancyGrid callback
+def ogCallback(og):
+    global lmap
+    if ml:
+        lmap = og
+        map_sub.unregister()
+    handleOccupancyGrid(og)
+
 def init():
-    global area_pub, tf2_buffer, fov_msg, max_time
+    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl
     rospy.init_node("ros_rvv")
 
     # Parameters
@@ -123,6 +156,16 @@ def init():
     pa = rospy.get_param("/ros_rvv/publish_area", True)
     mst = rospy.get_param("/ros_rvv/map_sub_topic", "projected_map2")
     mpt = rospy.get_param("/ros_rvv/map_pub_topic", "/ros_rvv/viewed_area")
+    # Map topic does not change, so subscribe only once
+    ml = rospy.get_param("/ros_rvv/latched_map", True)
+
+    # PointCloud2
+    pap = rospy.get_param("/ros_rvv/publish_area_as_pc2", True)
+    cst = rospy.get_param("/ros_rvv/pc2_sub_topic", "octomap_point_cloud_centers")
+    cpt = rospy.get_param("/ros_rvv/pc2_pub_topic", "/ros_rvv/view_area_pc2")
+    # Map topic does not change, so subscribe only once
+    cl = rospy.get_param("/ros_rvv/latched_cloud", True)
+
     max_time = rospy.get_param("/ros_rvv/max_time", 10) # in secs, <=0 to disable it
 
     fov_pub = rospy.Publisher(fov_topic, Range, queue_size=1)
@@ -137,17 +180,26 @@ def init():
     fov_msg.range = r
 
     # Initialize only if we need the viewed area
-    if pa:
+    if pa or pap:
         tf2_buffer = tf2_ros.Buffer()
         listener = tf2_ros.TransformListener(tf2_buffer)
-        area_pub = rospy.Publisher(mpt, OccupancyGrid, queue_size=1)
-        rospy.Subscriber(mst, OccupancyGrid, ogCallback)
         rospy.Service("/ros_rvv/clear_viewed_area", Empty, clearCallback)
+        if pa:
+            area_pub = rospy.Publisher(mpt, OccupancyGrid, queue_size=1)
+            map_sub = rospy.Subscriber(mst, OccupancyGrid, ogCallback)
+        if pap:
+            pc2_area_pub = rospy.Publisher(cpt, PointCloud2, queue_size=1)
+            pc2_sub = rospy.Subscriber(cst, PointCloud2, pc2Callback)
 
     while not rospy.is_shutdown():
         fov_msg.header.stamp = rospy.Time.now()
         fov_pub.publish(fov_msg)
         rospy.sleep(1/rate)
+        if ml and lmap is not None:
+            handleOccupancyGrid(lmap)
+        if cl and lcloud is not None:
+            handlePointCloud2(lcloud)
+
 
 if __name__ == "__main__":
     init()
