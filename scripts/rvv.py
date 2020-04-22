@@ -7,10 +7,9 @@ import tf2_ros
 import numpy as np
 import tf2_geometry_msgs
 from std_srvs.srv import Empty
-from sensor_msgs.msg import Range
 from nav_msgs.msg import OccupancyGrid
 import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import Range, PointCloud2, PointField
 from geometry_msgs.msg import TransformStamped, PoseStamped
 
 area_pub = None
@@ -23,6 +22,7 @@ grid_timestamps = np.array([])
 cloud_timestamps = np.array([])
 max_time = 0
 last_t = None
+last_tc = None
 lmap = None
 lcloud = None
 ml = False
@@ -34,10 +34,11 @@ def lookupTF(target_frame, source_frame):
 
 # Service callback that clears the timestamps to (re-)initialize viewed area
 def clearCallback(req):
-    global grid_timestamps, cloud_timestamps, last_t
+    global grid_timestamps, cloud_timestamps, last_t, last_tc
     grid_timestamps = np.array([])
     cloud_timestamps = np.array([])
     last_t = None
+    last_tc = None
     return []
 
 # A dummy (just checks for 0s) quaternion checker
@@ -116,10 +117,68 @@ def handleOccupancyGrid(og):
     except Exception as e:
         rospy.logerr(e)
 
+def inFOV(x, y):
+    return math.sqrt(x*x + y*y) <= fov_msg.range and math.atan2(y,x) >= -fov_msg.field_of_view/2 and math.atan2(y,x) <= fov_msg.field_of_view/2
+
+    return math.sqrt(math.pow(x1-x2,2) + math.pow(y1-y2,2))
+
 # PointCloud2 viewed area processing
 def handlePointCloud2(cloud):
-    # TODO
-    pass
+    global cloud_timestamps, last_tc
+    try:
+        c = list(pc2.read_points(cloud, field_names=("x", "y", "z")))
+
+        rgbc = [[k[0][0],k[0][1],k[0][2],k[1]] for k in list(zip(c, [1.0 for x in c]))]
+
+        rgbfield = PointField()
+        rgbfield.name = "rgb"
+        rgbfield.offset = 16
+        rgbfield.datatype = 7
+        rgbfield.count = 1
+        fields = cloud.fields + [rgbfield]
+
+        cloud.header.frame_id = cloud.header.frame_id if cloud.header.frame_id[0] != "/" else cloud.header.frame_id[1:]
+
+        tf = lookupTF(cloud.header.frame_id, fov_msg.header.frame_id)
+        #  tf = lookupTF(fov_msg.header.frame_id, cloud.header.frame_id)
+        print tf
+
+        if np.shape(cloud_timestamps)[0] != np.shape(c)[0]:
+            if np.size(cloud_timestamps) > 0:
+                rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
+            else:
+                rospy.loginfo("Initializing pc2 viewed area...")
+            cloud_timestamps = np.full(np.shape(c)[0],1)
+        t = rospy.Time.now()
+        if last_tc is not None:
+            for i in range(len(rgbc)):
+                if cloud_timestamps[i] < 1:
+                    p = PoseStamped()
+                    p.header.frame_id = fov_msg.header.frame_id
+                    p.header.stamp = rospy.Time.now()
+                    p.pose.position.x = rgbc[i][0]
+                    p.pose.position.y = rgbc[i][1]
+                    p.pose.position.z = rgbc[i][2]
+                    p.pose.orientation.w = 1
+
+                    pctf = tf2_geometry_msgs.do_transform_pose(p, tf)
+
+                    # TODO
+                    # Hacky way to check points due to my faulty GPU
+                    rgbc[i][0] = 100
+                    rgbc[i][1] = 100
+
+                    if inFOV(pctf.pose.position.x, pctf.pose.position.y): 
+                        if max_time > 0:
+                            cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1)
+                        else:
+                            cloud_timestamps[i] = 1
+                        rgbc[i][3] = cloud_timestamps[i]
+
+        last_tc = t
+        pc2_area_pub.publish(pc2.create_cloud(cloud.header, fields, rgbc))
+    except Exception as e:
+        rospy.logerr(e)
 
 # PointCloud2 callback
 def pc2Callback(cloud):
@@ -162,7 +221,7 @@ def init():
     # PointCloud2
     pap = rospy.get_param("/ros_rvv/publish_area_as_pc2", True)
     cst = rospy.get_param("/ros_rvv/pc2_sub_topic", "octomap_point_cloud_centers")
-    cpt = rospy.get_param("/ros_rvv/pc2_pub_topic", "/ros_rvv/view_area_pc2")
+    cpt = rospy.get_param("/ros_rvv/pc2_pub_topic", "/ros_rvv/viewed_area_pc2")
     # Map topic does not change, so subscribe only once
     cl = rospy.get_param("/ros_rvv/latched_cloud", True)
 
