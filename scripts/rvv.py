@@ -118,11 +118,6 @@ def handleOccupancyGrid(og):
         rospy.logerr(e)
 
 def inFOV(x, y):
-    #  print "---"
-    #  print x,y
-    #  print math.sqrt(x*x + y*y)
-    #  print "---"
-
     return math.sqrt(x*x + y*y) <= fov_msg.range and math.atan2(y,x) >= -fov_msg.field_of_view/2 and math.atan2(y,x) <= fov_msg.field_of_view/2
 
 # PointCloud2 viewed area processing
@@ -131,7 +126,7 @@ def handlePointCloud2(cloud):
     try:
         c = list(pc2.read_points(cloud, field_names=("x", "y", "z")))
 
-        rgbc = [[k[0][0],k[0][1],k[0][2],k[1]] for k in list(zip(c, [1.0 for x in c]))]
+        rgbc = [[k[0][0],k[0][1],k[0][2],k[1]] for k in list(zip(c, [0.0 for x in c]))]
 
         rgbfield = PointField()
         rgbfield.name = "rgb"
@@ -149,7 +144,7 @@ def handlePointCloud2(cloud):
                 rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
             else:
                 rospy.loginfo("Initializing pc2 viewed area...")
-            cloud_timestamps = np.full(np.shape(c)[0],0)
+            cloud_timestamps = np.full(np.shape(c)[0],0.0)
         t = rospy.Time.now()
         if last_tc is not None:
             for i in range(len(rgbc)):
@@ -170,10 +165,10 @@ def handlePointCloud2(cloud):
                         else:
                             cloud_timestamps[i] = 1
                 rgbc[i][3] = cloud_timestamps[i]
-                # TODO
                 # Hacky way to check points due to my faulty GPU
-                rgbc[i][0] = 100 - cloud_timestamps[i] * 100 + rgbc[i][0]
-                rgbc[i][1] = 100 - cloud_timestamps[i] * 100 + rgbc[i][1]
+                # Uncomment below lines for debugging using point translation instead of colour
+                #  rgbc[i][0] = 10 - cloud_timestamps[i] * 10 + c[i][0]
+                #  rgbc[i][1] = 10 - cloud_timestamps[i] * 10 + c[i][1]
             pc2_area_pub.publish(pc2.create_cloud(cloud.header, fields, rgbc))
 
         last_tc = t
