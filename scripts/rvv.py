@@ -107,7 +107,7 @@ def handleOccupancyGrid(og):
                     if x >= 0 and x < msg.info.width and y >= 0 and y < msg.info.height:
                         if max_time > 0:
                             if grid_timestamps[y,x] < 100:
-                                grid_timestamps[y,x] = min(grid_timestamps[y,x] +(t-last_t).to_sec()/float(max_time)*100, 100)
+                                grid_timestamps[y,x] = min(grid_timestamps[y,x] + (t-last_t).to_sec()/float(max_time)*100, 100)
                         else:
                             grid_timestamps[y,x] = 100
 
@@ -118,9 +118,12 @@ def handleOccupancyGrid(og):
         rospy.logerr(e)
 
 def inFOV(x, y):
-    return math.sqrt(x*x + y*y) <= fov_msg.range and math.atan2(y,x) >= -fov_msg.field_of_view/2 and math.atan2(y,x) <= fov_msg.field_of_view/2
+    #  print "---"
+    #  print x,y
+    #  print math.sqrt(x*x + y*y)
+    #  print "---"
 
-    return math.sqrt(math.pow(x1-x2,2) + math.pow(y1-y2,2))
+    return math.sqrt(x*x + y*y) <= fov_msg.range and math.atan2(y,x) >= -fov_msg.field_of_view/2 and math.atan2(y,x) <= fov_msg.field_of_view/2
 
 # PointCloud2 viewed area processing
 def handlePointCloud2(cloud):
@@ -139,16 +142,14 @@ def handlePointCloud2(cloud):
 
         cloud.header.frame_id = cloud.header.frame_id if cloud.header.frame_id[0] != "/" else cloud.header.frame_id[1:]
 
-        tf = lookupTF(cloud.header.frame_id, fov_msg.header.frame_id)
-        #  tf = lookupTF(fov_msg.header.frame_id, cloud.header.frame_id)
-        print tf
+        tf = lookupTF(fov_msg.header.frame_id, cloud.header.frame_id)
 
         if np.shape(cloud_timestamps)[0] != np.shape(c)[0]:
             if np.size(cloud_timestamps) > 0:
                 rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
             else:
                 rospy.loginfo("Initializing pc2 viewed area...")
-            cloud_timestamps = np.full(np.shape(c)[0],1)
+            cloud_timestamps = np.full(np.shape(c)[0],0)
         t = rospy.Time.now()
         if last_tc is not None:
             for i in range(len(rgbc)):
@@ -163,20 +164,19 @@ def handlePointCloud2(cloud):
 
                     pctf = tf2_geometry_msgs.do_transform_pose(p, tf)
 
-                    # TODO
-                    # Hacky way to check points due to my faulty GPU
-                    rgbc[i][0] = 100
-                    rgbc[i][1] = 100
-
                     if inFOV(pctf.pose.position.x, pctf.pose.position.y): 
                         if max_time > 0:
                             cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1)
                         else:
                             cloud_timestamps[i] = 1
-                        rgbc[i][3] = cloud_timestamps[i]
+                rgbc[i][3] = cloud_timestamps[i]
+                # TODO
+                # Hacky way to check points due to my faulty GPU
+                rgbc[i][0] = 100 - cloud_timestamps[i] * 100 + rgbc[i][0]
+                rgbc[i][1] = 100 - cloud_timestamps[i] * 100 + rgbc[i][1]
+            pc2_area_pub.publish(pc2.create_cloud(cloud.header, fields, rgbc))
 
         last_tc = t
-        pc2_area_pub.publish(pc2.create_cloud(cloud.header, fields, rgbc))
     except Exception as e:
         rospy.logerr(e)
 
