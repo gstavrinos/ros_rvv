@@ -208,7 +208,7 @@ def init():
 
     # OccupancyGrid
     pa = rospy.get_param("/ros_rvv/publish_area", True)
-    mst = rospy.get_param("/ros_rvv/map_sub_topic", "projected_map2")
+    mst = rospy.get_param("/ros_rvv/map_sub_topic", "projected_map")
     mpt = rospy.get_param("/ros_rvv/map_pub_topic", "/ros_rvv/viewed_area")
     # Map topic does not change, so subscribe only once
     ml = rospy.get_param("/ros_rvv/latched_map", True)
