@@ -1,6 +1,7 @@
 # ros_rvv
 ROS Robot View Visualization
 
+<img src="https://raw.githubusercontent.com/gstavrinos/ros_rvv/master/media/ros_rvv_demo3.gif" width=100%>
 <img src="https://raw.githubusercontent.com/gstavrinos/ros_rvv/master/media/ros_rvv_demo.gif" width=100%>
 <img src="https://raw.githubusercontent.com/gstavrinos/ros_rvv/master/media/ros_rvv_demo2.gif" width=100%>
 
