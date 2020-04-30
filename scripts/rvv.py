@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import math
 import rospy
+import struct
 import random
 import string
 import tf2_ros
@@ -27,6 +28,8 @@ lmap = None
 lcloud = None
 ml = False
 cl = True
+default_colour = (0,0,0)
+rgb_channeli = 1 # green
 
 # Shortcut of tf's lookup_transform
 def lookupTF(target_frame, source_frame):
@@ -144,7 +147,7 @@ def handlePointCloud2(cloud):
                 rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
             else:
                 rospy.loginfo("Initializing pc2 viewed area...")
-            cloud_timestamps = np.full(np.shape(c)[0],0.0)
+            cloud_timestamps = np.full(np.shape(c)[0], 0.0)
         t = rospy.Time.now()
         if last_tc is not None:
             for i in range(len(rgbc)):
@@ -164,7 +167,10 @@ def handlePointCloud2(cloud):
                             cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1)
                         else:
                             cloud_timestamps[i] = 1
-                rgbc[i][3] = cloud_timestamps[i]
+                rgb = [0,0,0]
+                rgb[rgb_channeli] = int(cloud_timestamps[i] * 255)
+                rgb = struct.unpack("f", struct.pack("i",int('%02x%02x%02x' % tuple(rgb),16)))[0]
+                rgbc[i][3] = default_colour if cloud_timestamps[i] == 0 else rgb
                 # Hacky way to check points due to my faulty GPU
                 # Uncomment below lines for debugging using point translation instead of colour
                 #  rgbc[i][0] = 10 - cloud_timestamps[i] * 10 + c[i][0]
@@ -193,7 +199,7 @@ def ogCallback(og):
     handleOccupancyGrid(og)
 
 def init():
-    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl
+    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl, default_colour, rgb_channeli
     rospy.init_node("ros_rvv")
 
     # Parameters
@@ -202,7 +208,7 @@ def init():
     rframe = rospy.get_param("/ros_rvv/frame", "camera_frame")
     fov_topic = rospy.get_param("/ros_rvv/fov_pub_topic", "/ros_rvv/fov")
     rt = rospy.get_param("/ros_rvv/radiation_type", 1) # 0 for ultrasound, 1 for IR
-    fov = rospy.get_param("/ros_rvv/field_of_view", math.pi/4) # radians
+    fov = rospy.get_param("/ros_rvv/field_of_view", math.pi) # radians
     r = rospy.get_param("/ros_rvv/range", 1) # meters
     rate = rospy.get_param("/ros_rvv/range_rate", 5) # Hz
 
@@ -219,6 +225,17 @@ def init():
     cpt = rospy.get_param("/ros_rvv/pc2_pub_topic", "/ros_rvv/viewed_area_pc2")
     # Map topic does not change, so subscribe only once
     cl = rospy.get_param("/ros_rvv/latched_cloud", True)
+    default_colour = rospy.get_param("/ros_rvv/default_cloud_colour", (100,100,100))
+    rgb_channel = rospy.get_param("/ros_rvv/cloud_viewed_channel", "g")
+
+    rgb_channeli = 1
+
+    if rgb_channel == "r":
+        rgb_channeli = 0
+    elif rgb_channel == "b":
+        rgb_channeli = 2
+
+    default_colour = struct.unpack("f", struct.pack("i", int("%02x%02x%02x" % default_colour, 16)))[0]
 
     max_time = rospy.get_param("/ros_rvv/max_time", 10) # in secs, <=0 to disable it
 
