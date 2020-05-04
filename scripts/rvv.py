@@ -39,9 +39,10 @@ def lookupTF(target_frame, source_frame):
 
 # Service callback that clears the timestamps to (re-)initialize viewed area
 def clearCallback(req):
-    global grid_timestamps, cloud_timestamps, last_t, last_tc
+    global grid_timestamps, cloud_timestamps, cloud_timestampsd, last_t, last_tc
     grid_timestamps = np.array([])
     cloud_timestamps = np.array([])
+    cloud_timestampsd = dict()
     last_t = None
     last_tc = None
     return []
@@ -127,7 +128,7 @@ def inFOV(x, y):
 
 # PointCloud2 viewed area processing
 def handlePointCloud2(cloud):
-    global cloud_timestamps, last_tc
+    global cloud_timestamps, cloud_timestampsd, last_tc
     try:
         c = list(pc2.read_points(cloud, field_names=("x", "y", "z")))
 
@@ -152,24 +153,14 @@ def handlePointCloud2(cloud):
                     rospy.loginfo("Initializing pc2 viewed area...")
                 cloud_timestamps = np.full(np.shape(c)[0], 0.0)
         else:
-            if np.size(cloud_timestamps) == 0:
+            if np.size(cloud_timestampsd) == 0:
                 rospy.loginfo("Initializing pc2 viewed area...")
-                cloud_timestamps = np.full(np.shape(c)[0], 0.0)
-            elif np.shape(cloud_timestamps)[0] > np.shape(c)[0]:
-                # TODO this is not correct.
-                # The same mapping procedure can erase points (and it happends frequently)
-                # so restarting the process is not what we want here.
-                # I need a dict in the form of cloud_timestamps[(x,y,z)] = time. 
-                # (cloud_timestampsd)
-                rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
-                cloud_timestamps = np.full(np.shape(c)[0], 0.0)
-            elif np.shape(cloud_timestamps)[0] < np.shape(c)[0]:
-                cloud_timestamps = np.append(cloud_timestamps, [0.0 for k in range(np.shape(c)[0]-np.shape(cloud_timestamps)[0])])
+            cloud_timestampsd = {k: 0.0 if k not in cloud_timestampsd else cloud_timestampsd[k] for k in c}
 
         t = rospy.Time.now()
         if last_tc is not None:
             for i in range(len(rgbc)):
-                if cloud_timestamps[i] < 1:
+                if (not cl_mapping and cloud_timestamps[i] < 1) or (cl_mapping and cloud_timestampsd[c[i]] < 1):
                     p = PoseStamped()
                     p.header.frame_id = fov_msg.header.frame_id
                     p.header.stamp = rospy.Time.now()
@@ -182,17 +173,34 @@ def handlePointCloud2(cloud):
 
                     if inFOV(pctf.pose.position.x, pctf.pose.position.y): 
                         if max_time > 0:
-                            cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1)
+                            if not cl_mapping:
+                                cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1.0)
+                            else:
+                                cloud_timestampsd[c[i]] = min(cloud_timestampsd[c[i]] + (t-last_tc).to_sec()/float(max_time), 1.0)
                         else:
-                            cloud_timestamps[i] = 1
+                            if not cl_mapping:
+                                cloud_timestamps[i] = 1.0
+                            else:
+                                cloud_timestampsd[c[i]] = 1.0
                 rgb = [0,0,0]
-                rgb[rgb_channeli] = int(cloud_timestamps[i] * 255)
-                rgb = struct.unpack("f", struct.pack("i",int('%02x%02x%02x' % tuple(rgb),16)))[0]
-                rgbc[i][3] = default_colour if cloud_timestamps[i] == 0 else rgb
+                if not cl_mapping:
+                    rgb[rgb_channeli] = int(cloud_timestamps[i] * 255)
+                    rgb = struct.unpack("f", struct.pack("i",int('%02x%02x%02x' % tuple(rgb),16)))[0]
+                    rgbc[i][3] = default_colour if cloud_timestamps[i] == 0 else rgb
+                else:
+                    rgb[rgb_channeli] = int(cloud_timestampsd[c[i]] * 255)
+                    rgb = struct.unpack("f", struct.pack("i",int('%02x%02x%02x' % tuple(rgb),16)))[0]
+                    rgbc[i][3] = default_colour if cloud_timestampsd[c[i]] == 0 else rgb
                 # Hacky way to check points due to my faulty GPU
                 # Uncomment below lines for debugging using point translation instead of colour
-                #  rgbc[i][0] = 10 - cloud_timestamps[i] * 10 + c[i][0]
-                #  rgbc[i][1] = 10 - cloud_timestamps[i] * 10 + c[i][1]
+                # ---
+                #  if not cl_mapping:
+                    #  rgbc[i][0] = 10 - cloud_timestamps[i] * 10 + c[i][0]
+                    #  rgbc[i][1] = 10 - cloud_timestamps[i] * 10 + c[i][1]
+                #  else:
+                    #  rgbc[i][0] = 10 - cloud_timestampsd[c[i]] * 10 + c[i][0]
+                    #  rgbc[i][1] = 10 - cloud_timestampsd[c[i]] * 10 + c[i][1]
+                # ---
             pc2_area_pub.publish(pc2.create_cloud(cloud.header, fields, rgbc))
 
         last_tc = t
@@ -231,7 +239,7 @@ def init():
     rate = rospy.get_param("/ros_rvv/range_rate", 5) # Hz
 
     # OccupancyGrid
-    pa = rospy.get_param("/ros_rvv/publish_area", True)
+    pa = rospy.get_param("/ros_rvv/publish_area", False)
     mst = rospy.get_param("/ros_rvv/map_sub_topic", "projected_map")
     mpt = rospy.get_param("/ros_rvv/map_pub_topic", "/ros_rvv/viewed_area")
     # Map topic does not change, so subscribe only once
