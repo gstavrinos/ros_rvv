@@ -21,6 +21,7 @@ fov_msg = Range()
 tf2_buffer = None
 grid_timestamps = np.array([])
 cloud_timestamps = np.array([])
+cloud_timestampsd = dict()
 max_time = 0
 last_t = None
 last_tc = None
@@ -30,6 +31,7 @@ ml = False
 cl = True
 default_colour = (0,0,0)
 rgb_channeli = 1 # green
+cl_mapping = True
 
 # Shortcut of tf's lookup_transform
 def lookupTF(target_frame, source_frame):
@@ -142,12 +144,28 @@ def handlePointCloud2(cloud):
 
         tf = lookupTF(fov_msg.header.frame_id, cloud.header.frame_id)
 
-        if np.shape(cloud_timestamps)[0] != np.shape(c)[0]:
-            if np.size(cloud_timestamps) > 0:
-                rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
-            else:
+        if not cl_mapping:
+            if np.shape(cloud_timestamps)[0] != np.shape(c)[0]:
+                if np.size(cloud_timestamps) > 0:
+                    rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
+                else:
+                    rospy.loginfo("Initializing pc2 viewed area...")
+                cloud_timestamps = np.full(np.shape(c)[0], 0.0)
+        else:
+            if np.size(cloud_timestamps) == 0:
                 rospy.loginfo("Initializing pc2 viewed area...")
-            cloud_timestamps = np.full(np.shape(c)[0], 0.0)
+                cloud_timestamps = np.full(np.shape(c)[0], 0.0)
+            elif np.shape(cloud_timestamps)[0] > np.shape(c)[0]:
+                # TODO this is not correct.
+                # The same mapping procedure can erase points (and it happends frequently)
+                # so restarting the process is not what we want here.
+                # I need a dict in the form of cloud_timestamps[(x,y,z)] = time. 
+                # (cloud_timestampsd)
+                rospy.logwarn("Re-initializing pc2 viewed area due to pointcloud shape incompatibility...")
+                cloud_timestamps = np.full(np.shape(c)[0], 0.0)
+            elif np.shape(cloud_timestamps)[0] < np.shape(c)[0]:
+                cloud_timestamps = np.append(cloud_timestamps, [0.0 for k in range(np.shape(c)[0]-np.shape(cloud_timestamps)[0])])
+
         t = rospy.Time.now()
         if last_tc is not None:
             for i in range(len(rgbc)):
@@ -199,7 +217,7 @@ def ogCallback(og):
     handleOccupancyGrid(og)
 
 def init():
-    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl, default_colour, rgb_channeli
+    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl, default_colour, rgb_channeli, cl_mapping
     rospy.init_node("ros_rvv")
 
     # Parameters
@@ -223,12 +241,16 @@ def init():
     pap = rospy.get_param("/ros_rvv/publish_area_as_pc2", True)
     cst = rospy.get_param("/ros_rvv/pc2_sub_topic", "octomap_point_cloud_centers")
     cpt = rospy.get_param("/ros_rvv/pc2_pub_topic", "/ros_rvv/viewed_area_pc2")
+    cl_mapping = rospy.get_param("/ros_rvv/cloud_mapping", True) 
     # Map topic does not change, so subscribe only once
     cl = rospy.get_param("/ros_rvv/latched_cloud", True)
     default_colour = rospy.get_param("/ros_rvv/default_cloud_colour", (100,100,100))
     rgb_channel = rospy.get_param("/ros_rvv/cloud_viewed_channel", "g")
 
     rgb_channeli = 1
+
+    # Disable latching if we have enabled mapping
+    cl = cl if not cl_mapping else False
 
     if rgb_channel == "r":
         rgb_channeli = 0
