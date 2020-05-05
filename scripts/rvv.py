@@ -32,6 +32,7 @@ cl = True
 default_colour = (0,0,0)
 rgb_channeli = 1 # green
 cl_mapping = True
+va_func = None
 
 # Shortcut of tf's lookup_transform
 def lookupTF(target_frame, source_frame):
@@ -173,10 +174,12 @@ def handlePointCloud2(cloud):
 
                     if inFOV(pctf.pose.position.x, pctf.pose.position.y): 
                         if max_time > 0:
+                            dt = (t-last_tc).to_sec()
+                            r = math.sqrt(pctf.pose.position.x*pctf.pose.position.x + pctf.pose.position.y*pctf.pose.position.y)
                             if not cl_mapping:
-                                cloud_timestamps[i] = min(cloud_timestamps[i] + (t-last_tc).to_sec()/float(max_time), 1.0)
+                                cloud_timestamps[i] = min(cloud_timestamps[i] + va_func(dt,r)/float(max_time), 1.0)
                             else:
-                                cloud_timestampsd[c[i]] = min(cloud_timestampsd[c[i]] + (t-last_tc).to_sec()/float(max_time), 1.0)
+                                cloud_timestampsd[c[i]] = min(cloud_timestampsd[c[i]] + va_func(dt,r)/float(max_time), 1.0)
                         else:
                             if not cl_mapping:
                                 cloud_timestamps[i] = 1.0
@@ -225,7 +228,7 @@ def ogCallback(og):
     handleOccupancyGrid(og)
 
 def init():
-    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl, default_colour, rgb_channeli, cl_mapping
+    global area_pub, pc2_area_pub, tf2_buffer, map_sub, pc2_sub, fov_msg, max_time, ml, cl, default_colour, rgb_channeli, cl_mapping, va_func
     rospy.init_node("ros_rvv")
 
     # Parameters
@@ -237,6 +240,14 @@ def init():
     fov = rospy.get_param("/ros_rvv/field_of_view", math.pi) # radians
     r = rospy.get_param("/ros_rvv/range", 1) # meters
     rate = rospy.get_param("/ros_rvv/range_rate", 5) # Hz
+
+    # TODO currently not supporting the occupancy grid
+    expr = rospy.get_param("/ros_rvv/viewed_area_calculation_expression", "dt")
+    #  expr = rospy.get_param("/ros_rvv/viewed_area_calculation_expression", "dt/r*r")
+
+    va_func = lambda dt,r=0: eval(expr)
+    # Calling the function to force quit the program if it contains an illegal expression
+    va_func(0,0)
 
     # OccupancyGrid
     pa = rospy.get_param("/ros_rvv/publish_area", False)
