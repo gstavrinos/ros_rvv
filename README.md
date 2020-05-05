@@ -50,7 +50,7 @@ ros_rvv takes a list of parameters to allow you to configure it based on your ro
 
 `/ros_rvv/cloud_viewed_channel`: The colour channel that represents the viewing-scale of each point. Possible values are "r", "g" and "b".
 
-`/ros_rvv/viewed_area_calculation_expression`: User-defined mathematical expression that is used to calculate the viewed area. It *must* include a `dt` variable which is the time difference and optionally an `r` variable which is the range. As an example, the user can use the "3\*dt/math.pow(*r,4)" string as an input. Currently supported only by pointcloud viewed area representation (not occupancy grid).
+`/ros_rvv/viewed_area_calculation_expression`: User-defined mathematical expression that is used to calculate the viewed area. It *must* include a `dt` variable which is the time difference and optionally an `r` variable which is the range. As an example, the user can use the "3\*dt/math.pow(r,4)" string as an input. Currently supported only by pointcloud viewed area representation (not occupancy grid).
 
 
 `/ros_rvv/max_time`: The time in seconds after which, the area is considered fully viewed. (<=0 for instant viewed areas)
