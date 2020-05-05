@@ -25,7 +25,7 @@ ros_rvv takes a list of parameters to allow you to configure it based on your ro
 `/ros_rvv/radiation_type`: This should most probably not be useful, since it configures the radiation type of the Range message (0 for ultrasound, 1 for IR).
 
 
-`/ros_rvv/publish_area`: A boolean that activates/deactivates the publication of the viewed area.
+`/ros_rvv/publish_area`: A boolean that activates/deactivates the publication of the occupancy grid viewed area.
 
 `/ros_rvv/map_sub_topic`: The topic from which to read the map. Currently, the only use of that map is to use its dimensions.
 
@@ -43,6 +43,14 @@ ros_rvv takes a list of parameters to allow you to configure it based on your ro
 
 `/ros_rvv/latched_cloud`: Set this to false if the pointcloud map message changes, else, the node will listen to it only once and then unsubscribe.
 
+`/ros_rvv/cloud_mapping`: A boolean that defines whether the map is static or constantly changing (running a mapping procedure e.g. octomap_mapping)
+
+`/ros_rvv/default_cloud_colour`: The colour of the cloud points when not viewed at all.
+
+
+`/ros_rvv/cloud_viewed_channel`: The colour channel that represents the viewing-scale of each point. Possible values are "r", "g" and "b".
+
+`/ros_rvv/viewed_area_calculation_expression`: User-defined mathematical expression that is used to calculate the viewed area. It *must* include a `dt` variable which is the time difference and optionally an `r` variable which is the range. As an example, the user can use the "3\*dt/math.pow(*r,4)" string as an input. Currently supported only by pointcloud viewed area representation (not occupancy grid).
 
 
 `/ros_rvv/max_time`: The time in seconds after which, the area is considered fully viewed. (<=0 for instant viewed areas)
