@@ -278,7 +278,7 @@ def init():
 
     default_colour = struct.unpack("f", struct.pack("i", int("%02x%02x%02x" % default_colour, 16)))[0]
 
-    max_time = rospy.get_param("/ros_rvv/max_time", 10) # in secs, <=0 to disable it
+    max_time = rospy.get_param("/ros_rvv/max_time", 2) # in secs, <=0 to disable it
 
     fov_pub = rospy.Publisher(fov_topic, Range, queue_size=1)
 
